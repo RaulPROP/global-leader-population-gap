@@ -62,7 +62,8 @@ ages, gap, population). The data is CC BY 4.0 with credit to its sources (see
 | Names and birth dates | Wikidata (English Wikipedia title as the name) for leaders matched by country, office dates and name; else Archigos; else inferred from REIGN's monthly ages |
 
 * Ages are measured on 1 July (the UN's reference date). Gap = leader age − mean age.
-* The leader of a year is whoever held office for the most days that year.
+* The leader of a year is whoever held office for the most days that year; in the
+  current year, whoever is in office today counts as staying until 31 December.
 * Today's borders: former Soviet / Yugoslav / Czechoslovak republics show the
   union's leader before independence; Germany before 1990 shows West Germany,
   Yemen before 1990 North Yemen, Vietnam before 1976 North Vietnam.

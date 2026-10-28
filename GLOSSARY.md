@@ -11,7 +11,7 @@ The person who actually holds power in a country at a given moment, in the Archi
 _Avoid_: Head of state, ruler, president
 
 **Leader of the year**:
-The effective leader who held power for the most days in a calendar year. Every other effective leader in office that year is an "other leader" for that year.
+The effective leader who held power for the most days in a calendar year. In the current year, whoever is in power today counts as staying until 31 December. Every other effective leader in office that year is an "other leader" for that year.
 _Avoid_: Leader on 1 July, current leader
 
 **Acting leader**:

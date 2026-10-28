@@ -16,7 +16,8 @@ Method, in short:
   * Birth dates: Archigos where a matching leader is found, otherwise inferred
     from REIGN's monthly age column; Wikidata for post-2021 leaders.
   * The leader of a country in a year is whoever held office for the most days
-    of that calendar year. Ages are measured at mid-year (1 July), the same
+    of that calendar year; in the current year, whoever is in office today
+    counts as staying until 31 December. Ages are measured at mid-year (1 July), the same
     reference date the UN uses for its population estimates.
 """
 
@@ -992,8 +993,12 @@ def merge_spells(spells: list[Spell]) -> list[Spell]:
 
 
 def overlap_days(s: Spell, year: int) -> int:
+    """Days of `year` in office. Whoever is in office today counts as staying
+    to 31 December, so the current year's leader does not depend on the date
+    of the build (as mean ages for future dates are projections too)."""
+    end = dt.date(LAST_YEAR, 12, 31) if s.end >= TODAY else s.end
     a = max(s.start, dt.date(year, 1, 1))
-    b = min(s.end, dt.date(year, 12, 31))
+    b = min(end, dt.date(year, 12, 31))
     return (b - a).days + 1 if b >= a else 0
 
 
