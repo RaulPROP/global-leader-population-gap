@@ -30,6 +30,12 @@ uv run build.py --refresh  # re-download everything (Wikidata included)
 The Wikidata query service sometimes throttles to one request per minute; the
 pipeline waits and retries, so a refresh can take a few minutes.
 
+Every build ends by running `validate.py` against the previous `gap.json` and
+exits with an error if the data must not be published (impossible ages, a
+leaderless period after Aug 2021, overlapping leaders, lost country-years).
+Run it on its own with `uv run validate.py`. Terms are defined in
+[GLOSSARY.md](GLOSSARY.md).
+
 ## Method
 
 | | Source |

@@ -3,7 +3,7 @@
     uv run build.py            # use cached raw inputs where present
     uv run build.py --refresh  # re-download everything (incl. Wikidata)
 
-Output: ../web/public/data/gap.json
+Output: ../web/public/data/gap.json, then checked by validate.py (exit 1 on errors).
 
 Method, in short:
   * Population mean age: computed from UN WPP 2024 population by single year
@@ -35,6 +35,7 @@ from pathlib import Path
 import pandas as pd
 
 import sources
+import validate
 
 HERE = Path(__file__).parent
 CONFIG = HERE / "config"
@@ -151,6 +152,7 @@ def load_population_tables(refresh: bool):
         for chunk in pd.read_csv(
             sources.fetch(name, refresh),
             usecols=["ISO3_code", "LocTypeName", "Time", "AgeGrpStart", "AgeGrpSpan", "PopTotal"],
+            dtype={"ISO3_code": str, "LocTypeName": str},
             chunksize=500_000,
         ):
             chunk = chunk[
@@ -779,8 +781,6 @@ def main() -> None:
 
     print("Leaders: Wikidata (after Aug 2021)")
     wd_spells, overrides, warnings, chosen = build_wikidata(reign_spells, reign_gov, leaders, args.refresh)
-    for w in warnings:
-        print("  WARN", w)
 
     spells = merge_spells(apply_overrides(reign_spells + wd_spells, overrides))
     by_iso: dict[str, list[Spell]] = {}
@@ -885,10 +885,13 @@ def main() -> None:
         "warnings": warnings,
         "curation": curation_notes(),
     }
+    baseline = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else None
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     n_rows = sum(len(v) for v in series.values())
     print(f"Wrote {OUT.relative_to(HERE.parent)}: {len(countries)} countries, {len(leader_list)} leaders, {n_rows} country-years")
+    if not validate.report(*validate.check(out, baseline)):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

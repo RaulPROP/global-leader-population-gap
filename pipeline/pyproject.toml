@@ -1,7 +1,7 @@
 [project]
 name = "glpg-pipeline"
 version = "0.1.0"
-description = "Builds the leader-age vs population-median-age dataset for the website"
+description = "Builds the leader-age vs population-mean-age dataset for the website"
 requires-python = ">=3.11"
 dependencies = [
     "pandas>=2.2",
