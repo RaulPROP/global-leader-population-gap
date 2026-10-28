@@ -8,14 +8,16 @@ interface Column {
   key: SortKey | null;
   label: string;
   num?: boolean;
+  /** extra class, e.g. to hide the column on narrow screens */
+  cls?: string;
 }
 
 const COLUMNS: Column[] = [
   { key: "country", label: "Country" },
   { key: "leader", label: "Leader" },
-  { key: null, label: "Born" },
-  { key: "la", label: "Leader age", num: true },
-  { key: "ma", label: "Mean age", num: true },
+  { key: null, label: "Born", cls: "col-born" },
+  { key: "la", label: "Leader age", num: true, cls: "col-age" },
+  { key: "ma", label: "Mean age", num: true, cls: "col-age" },
   { key: "gap", label: "Gap (years)", num: true },
 ];
 
@@ -76,7 +78,7 @@ export class YearTable {
       const th = el(
         "th",
         {
-          class: [c.num ? "num" : "", c.key ? "sortable" : ""].join(" ").trim(),
+          class: [c.num ? "num" : "", c.key ? "sortable" : "", c.cls ?? ""].join(" ").trim(),
           scope: "col",
           "aria-sort": active ? (this.sort.dir === 1 ? "ascending" : "descending") : undefined,
           tabindex: c.key ? 0 : undefined,
@@ -146,9 +148,9 @@ export class YearTable {
             r.via ? el("span", { class: "flag", title: r.via }, "historical state") : null,
           ),
           el("td", {}, r.leader.name),
-          el("td", { class: "muted" }, fmtBorn(r.leader)),
-          el("td", { class: "num" }, fmtAge(r.la)),
-          el("td", { class: "num" }, fmtAge(r.ma), r.proj ? el("span", { class: "muted", title: "UN projection" }, "*") : null),
+          el("td", { class: "muted col-born" }, fmtBorn(r.leader)),
+          el("td", { class: "num col-age" }, fmtAge(r.la)),
+          el("td", { class: "num col-age" }, fmtAge(r.ma), r.proj ? el("span", { class: "muted", title: "UN projection" }, "*") : null),
           el("td", { class: "num" }, gapCell(r.gap, color)),
         );
         tr.addEventListener("click", () => this.onSelect(r.iso3));

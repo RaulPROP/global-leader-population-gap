@@ -4,7 +4,7 @@
   --surface: #fcfcfb;
   --ink-1: #0b0b0b;
   --ink-2: #52514e;
-  --ink-muted: #898781;
+  --ink-muted: #6f6d68; /* 5:1 on --surface (WCAG AA) */
   --grid: #e1e0d9;
   --axis: #c3c2b7;
   --border: rgba(11, 11, 11, 0.1);
@@ -650,6 +650,24 @@ tbody tr.selected {
   max-height: 560px;
   overflow: auto;
   margin-top: 10px;
+}
+
+/* Phones: country, leader and gap only; a row opens the full details. */
+@media (max-width: 560px) {
+  .col-born,
+  .col-age {
+    display: none;
+  }
+  .gap-bar {
+    display: none;
+  }
+  th.sortable {
+    white-space: normal;
+  }
+  th,
+  td {
+    padding: 6px 4px;
+  }
 }
 
 .gap-cell {
