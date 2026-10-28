@@ -494,6 +494,7 @@ class Tenure:
     label: str
     start: dt.date | None
     end: dt.date | None
+    source: str = ""  # "country" (P35/P6 on the country) or "P39" (on the person)
 
 
 def clean_timeline(stmts: list[Tenure]) -> list[Tenure]:
@@ -502,14 +503,63 @@ def clean_timeline(stmts: list[Tenure]) -> list[Tenure]:
     * duplicate and overlapping statements for the same person are merged;
     * each tenure ends no later than the day before a different person takes
       over (stale statements often lack an end date);
+    * a holder stays in office through a shorter tenure of someone else that
+      starts inside theirs (an acting holder during a suspension or absence,
+      e.g. Prawit for Prayut, Thailand 2022): the other person only takes over
+      once the recorded tenure has ended;
     * statements without a start date only fill the time after the last dated
       tenure (e.g. a new holder whose statement has no qualifiers yet)."""
     dated_people = {t.person for t in stmts if t.start}
-    dated = sorted(
-        (Tenure(t.person, t.label, t.start, t.end) for t in stmts if t.start),
-        key=lambda t: (t.start, t.end or dt.date.max),
-    )
+    key = lambda t: (t.start, t.end or dt.date.max)  # noqa: E731
+    dated = sorted((Tenure(t.person, t.label, t.start, t.end, t.source) for t in stmts if t.start), key=key)
     undated = [t for t in stmts if not t.start and t.person not in dated_people and not t.end]
+
+    # An open statement starting the day the same person's tenure ended is a
+    # mis-entered end date (Rajoelina, Madagascar, 2025).
+    ends = {(t.person, t.end) for t in dated if t.end}
+    dated = [t for t in dated if t.end or (t.person, t.start) not in ends]
+    # Year-precision dates read as 1 January. If the same person has a more
+    # precise start later that year, the 1 January one is only a year
+    # (Schoof, Netherlands: "2024" on the country item, 2 July 2024 on him).
+    precise = {(t.person, t.start.year) for t in dated if (t.start.month, t.start.day) != (1, 1)}
+    dated = [t for t in dated if (t.start.month, t.start.day) != (1, 1) or (t.person, t.start.year) not in precise]
+    # The two sources disagreeing on when the same tenure (same end, or both
+    # open) started, by under a year: one is usually the election, the other
+    # taking office (Peña, Paraguay: 30 April vs 15 August 2023). Take office.
+    # A start both sources agree on stays (Glavchev, Bulgaria, appointed
+    # twice in 2024).
+    agreed = {(t.person, t.start) for t in dated for u in dated
+              if u.person == t.person and u.start == t.start and u.source != t.source}
+    moved: dict[dt.date, dt.date] = {}
+    for t in dated:
+        if (t.person, t.start) in agreed:
+            continue
+        later = [u.start for u in dated if u.person == t.person and u.end == t.end and u.source != t.source
+                 and t.start < u.start <= t.start + dt.timedelta(days=365)]
+        if later:
+            moved[t.start] = t.start = max(later)
+    # The predecessor's statement often ends on the election day as well
+    # (Santokhi, Suriname 2025): they stay until the successor takes office.
+    for t in dated:
+        for old, new in moved.items():
+            if t.end and t.start < old and old - dt.timedelta(days=1) <= t.end <= old:
+                t.end = new - dt.timedelta(days=1)
+    # Only bounded tenures are deferred: an open one starting inside another
+    # is a successor with a stale predecessor end date, or junk. When
+    # statements disagree on when a tenure ended, trust the earliest end
+    # (Oli, Nepal: one statement runs to 2022 across Deuba's tenure).
+    first_end: dict[tuple[str, dt.date], dt.date] = {}
+    for t in dated:
+        if t.end:
+            k = (t.person, t.start)
+            first_end[k] = min(first_end.get(k, t.end), t.end)
+    for t in dated:
+        if t.end:
+            end = first_end.get((t.person, t.start), t.end)
+            for u in dated:
+                if u.person != t.person and u.end and t.start < u.start < end:
+                    u.start = end + dt.timedelta(days=1)
+    dated = sorted((t for t in dated if t.end is None or t.start <= t.end), key=key)
 
     for i, t in enumerate(dated):
         nxt = [u.start for u in dated[i + 1:] if u.person != t.person and u.start > t.start]
@@ -602,9 +652,9 @@ def build_wikidata(
             births[qid(person)] = pick_birth(birth_cands[qid(person)])
             labels[qid(person)] = name_override.get(qid(person), rows.personLabel.iloc[0])
 
-    def tenures(df: pd.DataFrame, iso: str) -> list[Tenure]:
+    def tenures(df: pd.DataFrame, iso: str, source: str) -> list[Tenure]:
         return [
-            Tenure(qid(r.person), labels[qid(r.person)], parse_wd_date(r.start), parse_wd_date(r.end))
+            Tenure(qid(r.person), labels[qid(r.person)], parse_wd_date(r.start), parse_wd_date(r.end), source)
             for r in df.drop_duplicates(["person", "start", "end"]).itertuples()
             # Items with no name in any of our languages are stubs/duplicates.
             if r.personLabel != qid(r.person) and (iso, qid(r.person)) not in excluded
@@ -616,11 +666,11 @@ def build_wikidata(
     for iso in live:
         offs = country_offices.get(iso, {"P35": set(), "P6": set()})
         for role in ("P35", "P6"):
-            stmts = tenures(heads[(heads.iso == iso) & (heads.role == role)], iso)
-            stmts += tenures(p39[p39.office.map(qid).isin(offs[role])], iso)
+            stmts = tenures(heads[(heads.iso == iso) & (heads.role == role)], iso, "country")
+            stmts += tenures(p39[p39.office.map(qid).isin(offs[role])], iso, "P39")
             timelines[(iso, role)] = clean_timeline(stmts)
         if forced.get(iso, "").startswith("Q"):
-            timelines[(iso, forced[iso])] = clean_timeline(tenures(p39[p39.office.map(qid) == forced[iso]], iso))
+            timelines[(iso, forced[iso])] = clean_timeline(tenures(p39[p39.office.map(qid) == forced[iso]], iso, "P39"))
 
     def matches(iso: str, role: str, leader: Leader) -> bool:
         # REIGN sometimes lags a few weeks behind, so look slightly past its end.
