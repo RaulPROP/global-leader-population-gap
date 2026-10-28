@@ -5,7 +5,7 @@ import type { GeometryCollection, Topology } from "topojson-specification";
 import type { Feature, Geometry } from "geojson";
 import worldUrl from "world-atlas/countries-50m.json?url";
 import type { YearRow } from "./data";
-import { gapScale } from "./colors";
+import { type GapDomain, gapScale } from "./colors";
 import { fmtAge, fmtGap } from "./format";
 import { hideTooltip, showTooltip } from "./tooltip";
 
@@ -24,8 +24,11 @@ export class WorldMap {
   private host: HTMLElement;
   private onSelect: (iso3: string) => void;
 
-  constructor(host: HTMLElement, onSelect: (iso3: string) => void) {
+  private domain: GapDomain;
+
+  constructor(host: HTMLElement, domain: GapDomain, onSelect: (iso3: string) => void) {
     this.host = host;
+    this.domain = domain;
     this.onSelect = onSelect;
     this.svg = d3.select(host).append("svg").attr("role", "img").attr("aria-label", "World map of the leader–population age gap");
   }
@@ -80,7 +83,7 @@ export class WorldMap {
 
   paint(): void {
     if (!this.paths) return;
-    const color = gapScale();
+    const color = gapScale(this.domain);
     this.paths
       .attr("fill", (f) => {
         const r = f.iso3 ? this.rows.get(f.iso3) : undefined;

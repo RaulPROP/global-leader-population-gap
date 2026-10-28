@@ -1,5 +1,5 @@
 import type { YearRow } from "./data";
-import { GAP_LIMIT, gapScale } from "./colors";
+import { type GapDomain, gapScale } from "./colors";
 import { el, fmtAge, fmtBorn, fmtGap } from "./format";
 
 type SortKey = "country" | "leader" | "la" | "ma" | "gap";
@@ -32,9 +32,11 @@ export class YearTable {
 
   private countLabel: HTMLElement;
   private onSelect: (iso3: string) => void;
+  private domain: GapDomain;
 
   constructor(
     host: HTMLElement,
+    domain: GapDomain,
     filters: HTMLElement,
     countLabel: HTMLElement,
     continents: string[],
@@ -42,6 +44,7 @@ export class YearTable {
   ) {
     this.countLabel = countLabel;
     this.onSelect = onSelect;
+    this.domain = domain;
     const search = el("input", { type: "search", placeholder: "Filter by country or leader", "aria-label": "Filter table" });
     search.addEventListener("input", () => {
       this.query = search.value.trim().toLowerCase();
@@ -134,7 +137,7 @@ export class YearTable {
       return (typeof va === "string" ? va.localeCompare(vb as string) : va - (vb as number)) * dir;
     });
 
-    const color = gapScale();
+    const color = gapScale(this.domain);
     this.countLabel.textContent = `${rows.length} of ${this.rows.length} countries`;
     this.tbody.replaceChildren(
       ...rows.map((r) => {
@@ -151,7 +154,7 @@ export class YearTable {
           el("td", { class: "muted col-born" }, fmtBorn(r.leader)),
           el("td", { class: "num col-age" }, fmtAge(r.la)),
           el("td", { class: "num col-age" }, fmtAge(r.ma), r.proj ? el("span", { class: "muted", title: "UN projection" }, "*") : null),
-          el("td", { class: "num" }, gapCell(r.gap, color)),
+          el("td", { class: "num" }, gapCell(r.gap, color, this.domain)),
         );
         tr.addEventListener("click", () => this.onSelect(r.iso3));
         tr.addEventListener("keydown", (e) => {
@@ -163,12 +166,10 @@ export class YearTable {
   }
 }
 
-function gapCell(gap: number | null, color: (v: number) => string): HTMLElement {
+function gapCell(gap: number | null, color: (v: number) => string, [lo, hi]: GapDomain): HTMLElement {
   const wrap = el("div", { class: "gap-cell" }, el("span", {}, fmtGap(gap)));
   if (gap == null) return wrap;
-  // Bar from zero; scale shows -20..+GAP_LIMIT+20 with zero at 20%.
-  const lo = -20;
-  const hi = GAP_LIMIT + 20;
+  // Bar from zero, on the same lo..hi range as the color scale.
   const pct = (v: number) => ((Math.max(lo, Math.min(hi, v)) - lo) / (hi - lo)) * 100;
   const zero = pct(0);
   const end = pct(gap);

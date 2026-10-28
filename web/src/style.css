@@ -347,10 +347,23 @@ button:hover {
 
 .scale-legend .ticks {
   grid-column: 2;
-  display: flex;
-  justify-content: space-between;
+  position: relative;
+  height: 1.3em;
   font-variant-numeric: tabular-nums;
   color: var(--ink-muted);
+}
+
+.scale-legend .ticks span {
+  position: absolute;
+  transform: translateX(-50%);
+}
+
+.scale-legend .ticks span:first-child {
+  transform: none;
+}
+
+.scale-legend .ticks span:last-child {
+  transform: translateX(-100%);
 }
 
 .nodata-swatch {

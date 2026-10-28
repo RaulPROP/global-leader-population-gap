@@ -1,5 +1,6 @@
+import * as d3 from "d3";
 import "./style.css";
-import { GAP_LIMIT, cssVar, darkQuery, gapScale } from "./colors";
+import { type GapDomain, cssVar, darkQuery, gapGradient } from "./colors";
 import { Model, loadDataset, type Dataset, type Row, type YearRow } from "./data";
 import { el, fmtAge, fmtBorn, fmtGap, yearsRange } from "./format";
 import { LineChart, type SeriesDef } from "./linechart";
@@ -69,11 +70,11 @@ async function main() {
   );
 
   // ---------------------------------------------------------------- views
-  const map = new WorldMap($("map"), (iso3) => setState({ country: iso3 }));
+  const map = new WorldMap($("map"), model.gapDomain, (iso3) => setState({ country: iso3 }));
   const countryChart = new LineChart($("country-chart"), 300);
   const trendChart = new LineChart($("trend-chart"), 300);
   const continents = [...new Set(ds.countries.map((c) => c.continent).filter(Boolean) as string[])].sort();
-  const table = new YearTable($("table"), $("table-filters"), $("table-count"), continents, (iso3) => {
+  const table = new YearTable($("table"), model.gapDomain, $("table-filters"), $("table-count"), continents, (iso3) => {
     setState({ country: iso3 });
     $("country-card").scrollIntoView({ behavior: "smooth", block: "start" });
   });
@@ -103,7 +104,7 @@ async function main() {
   }
 
   darkQuery.addEventListener("change", () => {
-    renderLegend();
+    renderLegend(model.gapDomain);
     map.paint();
     render();
   });
@@ -111,7 +112,7 @@ async function main() {
     Object.assign(state, readHash(model));
     render();
   });
-  renderLegend();
+  renderLegend(model.gapDomain);
   render();
 }
 
@@ -149,18 +150,16 @@ function curationText(c: Dataset["curation"][number]): string {
   }
 }
 
-function renderLegend() {
-  const color = gapScale();
-  const stops = Array.from({ length: 11 }, (_, i) => {
-    const v = -GAP_LIMIT + (i * 2 * GAP_LIMIT) / 10;
-    return `${color(v)} ${i * 10}%`;
-  });
-  const ticks = [-GAP_LIMIT, -GAP_LIMIT / 2, 0, GAP_LIMIT / 2, GAP_LIMIT].map((v) =>
-    el("span", {}, v === GAP_LIMIT ? `${fmtGap(v, 0)}+` : v === -GAP_LIMIT ? `${fmtGap(v, 0)}` : fmtGap(v, 0)),
+function renderLegend(domain: GapDomain) {
+  const [lo, hi] = domain;
+  // The two ends, zero, and round steps in between that leave room for the end labels.
+  const steps = d3.ticks(0, hi, 3).filter((v) => v > 0 && hi - v >= (hi - lo) / 10);
+  const ticks = [...new Set([lo, 0, ...steps, hi])].map((v) =>
+    el("span", { style: `left:${((v - lo) / (hi - lo)) * 100}%` }, fmtGap(v, 0)),
   );
   $("map-legend").replaceChildren(
     el("span", {}, "Leader younger"),
-    el("div", { class: "bar", style: `background:linear-gradient(90deg, ${stops.join(",")})` }),
+    el("div", { class: "bar", style: `background:${gapGradient(domain)}` }),
     el("span", {}, "Leader older"),
     el("div", { class: "ticks" }, ...ticks),
     el("span", { style: "grid-column: 1 / -1; margin-top: 4px" }, el("span", { class: "nodata-swatch" }), "No data (not independent, or no single leader)"),

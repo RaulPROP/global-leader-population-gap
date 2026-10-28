@@ -1,6 +1,8 @@
 // Shape of public/data/gap.json (written by pipeline/build.py) and the
 // derived per-year views the UI works from.
 
+import { type GapDomain, gapDomain } from "./colors";
+
 export interface Row {
   y: number;
   /** index into Dataset.leaders */
@@ -85,6 +87,7 @@ export class Model {
   readonly countries = new Map<string, Country>();
   readonly byYear = new Map<number, YearRow[]>();
   readonly stats: YearStat[] = [];
+  readonly gapDomain: GapDomain;
 
   readonly ds: Dataset;
 
@@ -127,6 +130,7 @@ export class Model {
         worldMeanAge: ds.worldMeanAge[year] ?? null,
       });
     }
+    this.gapDomain = gapDomain(Object.values(ds.series).flatMap((rows) => rows.flatMap((r) => (r.gap == null ? [] : [r.gap]))));
   }
 
   rows(year: number): YearRow[] {
