@@ -221,6 +221,7 @@ function renderCountry(model: Model, state: State, chart: LineChart, selectYear:
   const s2 = cssVar("--series-2");
 
   $("country-title").textContent = country.name;
+  document.title = `${country.name} · The leader–population age gap`;
   const office =
     country.officeAfter2021 && country.officeAfter2021 !== "not tracked" ? ` · from Sep 2021 tracks the ${country.officeAfter2021}` : "";
   $("country-sub").textContent = `${country.continent ?? ""}${office}`;
@@ -238,6 +239,8 @@ function renderCountry(model: Model, state: State, chart: LineChart, selectYear:
         ` (${fmtAge(row.la)}) was ${fmtAge(Math.abs(row.gap))} years ${older ? "older" : "younger"} than the average resident (${fmtAge(row.ma)}${row.proj ? ", projected" : ""}).`,
       ),
     );
+  } else if (row?.leader.collective) {
+    head.replaceChildren(el("p", { class: "country-headline" }, `${row.leader.name}: a collective leadership, so no single leader age for ${state.year}.`));
   } else if (row) {
     head.replaceChildren(el("p", { class: "country-headline" }, `${row.leader.name}: birth date unknown, so no gap for ${state.year}.`));
   } else {

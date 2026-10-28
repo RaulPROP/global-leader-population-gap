@@ -14,6 +14,7 @@ export function fmtAge(v: number | null | undefined, digits = 1): string {
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 export function fmtBorn(l: Leader): string {
+  if (l.collective) return "–";
   if (!l.born) return "unknown";
   const [y, m, d] = l.born.split("-");
   switch (l.bornPrecision) {

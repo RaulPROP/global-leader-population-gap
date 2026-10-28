@@ -3,7 +3,7 @@
     uv run build.py            # use cached raw inputs where present
     uv run build.py --refresh  # re-download everything (incl. Wikidata)
 
-Output: ../web/public/data/gap.json
+Output: ../web/public/data/gap.json (+ gap.csv for download), then checked by validate.py (exit 1 on errors).
 
 Method, in short:
   * Population mean age: computed from UN WPP 2024 population by single year
@@ -16,13 +16,15 @@ Method, in short:
   * Birth dates: Archigos where a matching leader is found, otherwise inferred
     from REIGN's monthly age column; Wikidata for post-2021 leaders.
   * The leader of a country in a year is whoever held office for the most days
-    of that calendar year. Ages are measured at mid-year (1 July), the same
+    of that calendar year; in the current year, whoever is in office today
+    counts as staying until 31 December. Ages are measured at mid-year (1 July), the same
     reference date the UN uses for its population estimates.
 """
 
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import difflib
 import json
@@ -35,16 +37,22 @@ from pathlib import Path
 import pandas as pd
 
 import sources
+import validate
 
 HERE = Path(__file__).parent
 CONFIG = HERE / "config"
 OUT = HERE.parent / "web" / "public" / "data" / "gap.json"
+OUT_CSV = OUT.with_suffix(".csv")
 
 FIRST_YEAR = 1960
 TODAY = dt.date.today()
 LAST_YEAR = TODAY.year
 REIGN_END = dt.date(2021, 8, 31)
 WIKIDATA_START = REIGN_END + dt.timedelta(days=1)
+# Wikidata items of states whose leaders REIGN files under a successor's
+# code, so their offices are searched when linking those leaders.
+PARENT_STATES = {"RUS": "Q15180", "SRB": "Q83286", "CZE": "Q33946", "DEU": "Q713750",
+                 "YEM": "Q267584", "VNM": "Q172640"}
 HISTORICAL_REIGN_NAMES = {"Soviet Union": "the Soviet Union", "Yugoslavia": "Yugoslavia", "Czechoslovakia": "Czechoslovakia"}
 LABEL_LANGS = "en,mul,es,fr,de,pt,it"
 
@@ -99,6 +107,12 @@ def qid(uri: str) -> str:
 # ---------------------------------------------------------------- leaders
 
 
+def name_overrides() -> dict[str, str]:
+    """config/names.csv: display names keyed by Wikidata QID or REIGN key."""
+    df = pd.read_csv(CONFIG / "names.csv", dtype=str, keep_default_na=False)
+    return dict(zip(df.leader, df.name))
+
+
 @dataclass
 class Leader:
     key: str
@@ -108,6 +122,7 @@ class Leader:
     qid: str | None = None
     wiki_title: str | None = None
     sources: set[str] = field(default_factory=set)
+    collective: bool = False  # a junta or joint office coded as one leader: no age
 
     def birth_label(self) -> str | None:
         if self.birth is None:
@@ -151,6 +166,7 @@ def load_population_tables(refresh: bool):
         for chunk in pd.read_csv(
             sources.fetch(name, refresh),
             usecols=["ISO3_code", "LocTypeName", "Time", "AgeGrpStart", "AgeGrpSpan", "PopTotal"],
+            dtype={"ISO3_code": str, "LocTypeName": str},
             chunksize=500_000,
         ):
             chunk = chunk[
@@ -242,6 +258,8 @@ def build_reign(refresh: bool, mapping: pd.DataFrame, leaders: dict[str, Leader]
     for (ccode, country), g in r.groupby(["ccode", "country"], sort=False):
         open_runs: dict[str, Run] = {}
         for name, year, month, age in g[["leader", "year", "month", "age"]].itertuples(index=False):
+            # San Marino's Captains Regent: "Gloriana Ranocchini (f) (2nd time)"
+            name = re.sub(r"\s*\((f|\d+(st|nd|rd|th) time)\)", "", name)
             first = dt.date(year, month, 1)
             last_day = dt.date(year + month // 12, month % 12 + 1, 1) - dt.timedelta(days=1)
             t = year + (month - 0.5) / 12
@@ -292,6 +310,12 @@ def build_reign(refresh: bool, mapping: pd.DataFrame, leaders: dict[str, Leader]
             ts = sorted(t - a for t, a in obs)
             est, prec = ts[len(ts) // 2] - 0.5, "estimated"
         leader = Leader(key=key, name=first.name, birth=est, birth_precision=prec, sources={"REIGN"})
+        # REIGN codes some collective leaderships as one leader ("Military
+        # Junta", San Marino's "Cardelli and Dolcini"), with one member's age.
+        if re.search(r"\bjunta\b|\bcouncil\b| and ", first.name, re.I):
+            leader.collective, leader.birth, leader.birth_precision = True, None, "unknown"
+            leaders[key] = leader
+            continue
 
         # Archigos match: same country, overlapping tenure, similar name, and a
         # birth date consistent with REIGN's ages.
@@ -492,6 +516,7 @@ class Tenure:
     label: str
     start: dt.date | None
     end: dt.date | None
+    source: str = ""  # "country" (P35/P6 on the country) or "P39" (on the person)
 
 
 def clean_timeline(stmts: list[Tenure]) -> list[Tenure]:
@@ -500,14 +525,63 @@ def clean_timeline(stmts: list[Tenure]) -> list[Tenure]:
     * duplicate and overlapping statements for the same person are merged;
     * each tenure ends no later than the day before a different person takes
       over (stale statements often lack an end date);
+    * a holder stays in office through a shorter tenure of someone else that
+      starts inside theirs (an acting holder during a suspension or absence,
+      e.g. Prawit for Prayut, Thailand 2022): the other person only takes over
+      once the recorded tenure has ended;
     * statements without a start date only fill the time after the last dated
       tenure (e.g. a new holder whose statement has no qualifiers yet)."""
     dated_people = {t.person for t in stmts if t.start}
-    dated = sorted(
-        (Tenure(t.person, t.label, t.start, t.end) for t in stmts if t.start),
-        key=lambda t: (t.start, t.end or dt.date.max),
-    )
+    key = lambda t: (t.start, t.end or dt.date.max)  # noqa: E731
+    dated = sorted((Tenure(t.person, t.label, t.start, t.end, t.source) for t in stmts if t.start), key=key)
     undated = [t for t in stmts if not t.start and t.person not in dated_people and not t.end]
+
+    # An open statement starting the day the same person's tenure ended is a
+    # mis-entered end date (Rajoelina, Madagascar, 2025).
+    ends = {(t.person, t.end) for t in dated if t.end}
+    dated = [t for t in dated if t.end or (t.person, t.start) not in ends]
+    # Year-precision dates read as 1 January. If the same person has a more
+    # precise start later that year, the 1 January one is only a year
+    # (Schoof, Netherlands: "2024" on the country item, 2 July 2024 on him).
+    precise = {(t.person, t.start.year) for t in dated if (t.start.month, t.start.day) != (1, 1)}
+    dated = [t for t in dated if (t.start.month, t.start.day) != (1, 1) or (t.person, t.start.year) not in precise]
+    # The two sources disagreeing on when the same tenure (same end, or both
+    # open) started, by under a year: one is usually the election, the other
+    # taking office (Peña, Paraguay: 30 April vs 15 August 2023). Take office.
+    # A start both sources agree on stays (Glavchev, Bulgaria, appointed
+    # twice in 2024).
+    agreed = {(t.person, t.start) for t in dated for u in dated
+              if u.person == t.person and u.start == t.start and u.source != t.source}
+    moved: dict[dt.date, dt.date] = {}
+    for t in dated:
+        if (t.person, t.start) in agreed:
+            continue
+        later = [u.start for u in dated if u.person == t.person and u.end == t.end and u.source != t.source
+                 and t.start < u.start <= t.start + dt.timedelta(days=365)]
+        if later:
+            moved[t.start] = t.start = max(later)
+    # The predecessor's statement often ends on the election day as well
+    # (Santokhi, Suriname 2025): they stay until the successor takes office.
+    for t in dated:
+        for old, new in moved.items():
+            if t.end and t.start < old and old - dt.timedelta(days=1) <= t.end <= old:
+                t.end = new - dt.timedelta(days=1)
+    # Only bounded tenures are deferred: an open one starting inside another
+    # is a successor with a stale predecessor end date, or junk. When
+    # statements disagree on when a tenure ended, trust the earliest end
+    # (Oli, Nepal: one statement runs to 2022 across Deuba's tenure).
+    first_end: dict[tuple[str, dt.date], dt.date] = {}
+    for t in dated:
+        if t.end:
+            k = (t.person, t.start)
+            first_end[k] = min(first_end.get(k, t.end), t.end)
+    for t in dated:
+        if t.end:
+            end = first_end.get((t.person, t.start), t.end)
+            for u in dated:
+                if u.person != t.person and u.end and t.start < u.start < end:
+                    u.start = end + dt.timedelta(days=1)
+    dated = sorted((t for t in dated if t.end is None or t.start <= t.end), key=key)
 
     for i, t in enumerate(dated):
         nxt = [u.start for u in dated[i + 1:] if u.person != t.person and u.start > t.start]
@@ -572,8 +646,7 @@ def build_wikidata(
     manual = pd.read_csv(CONFIG / "manual_leaders.csv", dtype=str, keep_default_na=False)
     exclude = pd.read_csv(CONFIG / "exclude.csv", dtype=str, keep_default_na=False)
     excluded = set(zip(exclude.iso3, exclude.qid))
-    names_cfg = pd.read_csv(CONFIG / "names.csv", dtype=str, keep_default_na=False)
-    name_override = dict(zip(names_cfg.qid, names_cfg.name))
+    name_override = name_overrides()
 
     # Countries whose REIGN series runs to the end of the dataset.
     last_reign: dict[str, Spell] = {}
@@ -600,9 +673,9 @@ def build_wikidata(
             births[qid(person)] = pick_birth(birth_cands[qid(person)])
             labels[qid(person)] = name_override.get(qid(person), rows.personLabel.iloc[0])
 
-    def tenures(df: pd.DataFrame, iso: str) -> list[Tenure]:
+    def tenures(df: pd.DataFrame, iso: str, source: str) -> list[Tenure]:
         return [
-            Tenure(qid(r.person), labels[qid(r.person)], parse_wd_date(r.start), parse_wd_date(r.end))
+            Tenure(qid(r.person), labels[qid(r.person)], parse_wd_date(r.start), parse_wd_date(r.end), source)
             for r in df.drop_duplicates(["person", "start", "end"]).itertuples()
             # Items with no name in any of our languages are stubs/duplicates.
             if r.personLabel != qid(r.person) and (iso, qid(r.person)) not in excluded
@@ -614,11 +687,11 @@ def build_wikidata(
     for iso in live:
         offs = country_offices.get(iso, {"P35": set(), "P6": set()})
         for role in ("P35", "P6"):
-            stmts = tenures(heads[(heads.iso == iso) & (heads.role == role)], iso)
-            stmts += tenures(p39[p39.office.map(qid).isin(offs[role])], iso)
+            stmts = tenures(heads[(heads.iso == iso) & (heads.role == role)], iso, "country")
+            stmts += tenures(p39[p39.office.map(qid).isin(offs[role])], iso, "P39")
             timelines[(iso, role)] = clean_timeline(stmts)
         if forced.get(iso, "").startswith("Q"):
-            timelines[(iso, forced[iso])] = clean_timeline(tenures(p39[p39.office.map(qid) == forced[iso]], iso))
+            timelines[(iso, forced[iso])] = clean_timeline(tenures(p39[p39.office.map(qid) == forced[iso]], iso, "P39"))
 
     def matches(iso: str, role: str, leader: Leader) -> bool:
         # REIGN sometimes lags a few weeks behind, so look slightly past its end.
@@ -706,6 +779,184 @@ def build_wikidata(
     return spells, overrides, warnings, chosen
 
 
+def wikidata_history(country_qids: dict[str, str], offices: set[str], refresh: bool) -> pd.DataFrame:
+    """Every head-of-state/government statement since 1945: P35/P6 on the
+    country items plus P39 holders of their offices. Queried in chunks to
+    stay under the query service's time limit."""
+    fields = f"""
+          ?st wikibase:rank ?rank . FILTER(?rank != wikibase:DeprecatedRank)
+          OPTIONAL {{ ?st pq:P580 ?start }}
+          OPTIONAL {{ ?st pq:P582 ?end }}
+          FILTER(!BOUND(?end) || ?end >= "1945-01-01T00:00:00Z"^^xsd:dateTime)
+          {WD_PERSON_FIELDS}"""
+    frames = []
+    items = sorted(country_qids.items())
+    for i in range(0, len(items), 40):
+        values = " ".join(f'(wd:{q} "{iso}")' for iso, q in items[i:i + 40])
+        frames.append(sources.sparql("wd_history_heads", f"""
+        SELECT ?iso ?person ?personLabel ?birth ?birthPrec ?start ?end WHERE {{
+          VALUES (?country ?iso) {{ {values} }}
+          ?country p:P35|p:P6 ?st . ?st ps:P35|ps:P6 ?person .{fields}
+        }}""", refresh))
+    offs = sorted(offices)
+    for i in range(0, len(offs), 60):
+        values = " ".join(f"wd:{q}" for q in offs[i:i + 60])
+        frames.append(sources.sparql("wd_history_offices", f"""
+        SELECT ?office ?person ?personLabel ?birth ?birthPrec ?start ?end WHERE {{
+          VALUES ?office {{ {values} }}
+          ?person p:P39 ?st . ?st ps:P39 ?office .{fields}
+        }}""", refresh))
+    return pd.concat(frames, ignore_index=True).fillna("")
+
+
+def wikidata_past_offices(country_qids: dict[str, str], refresh: bool) -> list[tuple[str, str]]:
+    """(iso3, office) for every president / prime minister / head of state or
+    government / monarch office of a country, including abolished ones
+    (Prime Minister of Turkey) that P1906/P1313 no longer point to."""
+    values = " ".join(f'(wd:{q} "{iso}")' for iso, q in sorted(country_qids.items()))
+    df = sources.sparql("wd_past_offices", f"""
+        SELECT DISTINCT ?iso ?office WHERE {{
+          VALUES (?country ?iso) {{ {values} }}
+          VALUES ?type {{ wd:Q48352 wd:Q2285706 wd:Q14212 wd:Q30461 wd:Q116 }}
+          ?office wdt:P1001 ?country ; wdt:P31|wdt:P279 ?type .
+        }}""", refresh)
+    return [(r.iso, qid(r.office)) for r in df.itertuples()]
+
+
+def wikidata_enwiki_titles(qids: list[str], refresh: bool) -> dict[str, str]:
+    """English Wikipedia article titles, which are better curated as English
+    names than Wikidata labels ("Abd al-Aziz Boutafliqa")."""
+    out = {}
+    for i in range(0, len(qids), 400):
+        values = " ".join(f"wd:{q}" for q in qids[i:i + 400])
+        df = sources.sparql("wd_enwiki", f"""
+        SELECT ?person ?title WHERE {{
+          VALUES ?person {{ {values} }}
+          ?article schema:about ?person ; schema:isPartOf <https://en.wikipedia.org/> ; schema:name ?title .
+        }}""", refresh)
+        out.update({qid(r.person): r.title for r in df.itertuples()})
+    return out
+
+
+def name_leaders(leaders: list[Leader], refresh: bool) -> None:
+    """Final display names: names.csv, else the English Wikipedia title (from
+    Wikidata, or Archigos' DBpedia link), else what the source called them."""
+    titles = wikidata_enwiki_titles(sorted({l.qid for l in leaders if l.qid}), refresh)
+    override = name_overrides()
+    for l in leaders:
+        title = titles.get(l.qid) or l.wiki_title
+        if title:
+            l.wiki_title = title
+            l.name = re.sub(r"\s*\(.*\)$", "", title)
+        l.name = override.get(l.qid or "", override.get(l.key, l.name))
+
+
+def link_reign_leaders(spells: list[Spell], leaders: dict[str, Leader], refresh: bool) -> list[str]:
+    """Give REIGN/Archigos leaders, often known only by a surname ("Rousseff",
+    "Garcia Perez"), their Wikidata identity: full name, QID and, where more
+    precise, birth date. A Wikidata person matches when they held their
+    country's top office at an overlapping time and same_person() agrees, or
+    when config/links.csv says so. Returns warnings for a human to review."""
+    by_leader: dict[str, list[Spell]] = {}
+    for s in spells:
+        if s.source.startswith("REIGN"):
+            by_leader.setdefault(s.leader, []).append(s)
+    isos = sorted({s.iso3 for ss in by_leader.values() for s in ss})
+    country_qids, country_offices = wikidata_countries(isos, refresh)
+    # "RUS~" etc. stand for the parent state; candidates count for "RUS".
+    country_qids |= {f"{iso}~": q for iso, q in PARENT_STATES.items()}
+    offices = {o for v in country_offices.values() for os_ in v.values() for o in os_}
+    office_iso = {}
+    for iso, v in country_offices.items():
+        for os_ in v.values():
+            for o in os_:
+                office_iso.setdefault(o, set()).add(iso)
+    for iso, office in wikidata_past_offices(country_qids, refresh):
+        offices.add(office)
+        office_iso.setdefault(office, set()).add(iso.rstrip("~"))
+    links_cfg = pd.read_csv(CONFIG / "links.csv", dtype=str, keep_default_na=False)
+    no_link = set(links_cfg[links_cfg.qid == ""].leader)
+    forced = dict(zip(links_cfg[links_cfg.qid != ""].leader, links_cfg[links_cfg.qid != ""].qid))
+
+    hist = wikidata_history(country_qids, offices, refresh)
+    cands: dict[str, list[tuple[str, str, dt.date | None, dt.date | None]]] = {}
+    for r in hist.itertuples():
+        isos_r = {r.iso.rstrip("~")} if r.iso else office_iso.get(qid(r.office), set())
+        if r.personLabel == qid(r.person):
+            continue
+        for iso in isos_r:
+            cands.setdefault(iso, []).append((qid(r.person), r.personLabel, parse_wd_date(r.start), parse_wd_date(r.end)))
+    people = wikidata_people(sorted(set(forced.values())), refresh) if forced else hist.iloc[:0]
+    forced_label = {qid(p): rows.personLabel.iloc[0] for p, rows in people.groupby("person")}
+    births = {qid(p): wd_births(rows) for p, rows in pd.concat([hist, people]).groupby("person")}
+    pad = dt.timedelta(days=90)
+
+    def same_tenure(start: dt.date | None, end: dt.date | None, ss: list[Spell]) -> bool:
+        return start is not None and any(
+            abs((start - s.start).days) <= 92 and abs(((end or TODAY) - s.end).days) <= 92 for s in ss)
+
+    unlinked, corrected = [], []
+    links: list[tuple[float, str, str, str, str]] = []
+    reign_qids = {(s.iso3, leaders[s.leader].qid) for s in spells if leaders[s.leader].qid}
+    for key, ss in by_leader.items():
+        leader = leaders[key]
+        if leader.qid or leader.collective or key.startswith("wd:") or key in no_link:
+            continue
+        if key in forced:
+            links.append((2.0, key, forced[key], forced_label.get(forced[key], leader.name), ss[0].iso3))
+            continue
+        # REIGN's own name too: Archigos' article link is occasionally wrong
+        # ("Ahmed", Bangladesh 1990, linked to Moeenuddin Ahmad Qureshi).
+        names = [key.split(":")[2], leader.name] + ([leader.wiki_title] if leader.wiki_title else [])
+        hits: dict[str, tuple[float, str]] = {}  # person -> (name score, label)
+        for iso in {s.iso3 for s in ss}:
+            for person, label, start, end in cands.get(iso, []):
+                overlaps = any((start or dt.date.min) <= s.end + pad and (end or dt.date.max) >= s.start - pad for s in ss)
+                if not overlaps or (start is None and end is None):
+                    continue
+                b, prec = pick_birth(births.get(person, []), leader.birth)
+                score = max(name_similarity(label, n) for n in names)
+                # REIGN gets some birth years badly wrong (Klaus "1910"); the
+                # same name in office over the same months is then enough.
+                if same_person(label, b, leader, prec) or (score >= 0.8 and same_tenure(start, end, ss)):
+                    hits[person] = (max(hits.get(person, (0.0,))[0], score), label)
+        best = max((h[0] for h in hits.values()), default=0.0)
+        top = [(p, h) for p, h in hits.items() if h[0] == best]
+        if len(top) != 1:
+            unlinked.append(leader.name)
+            continue
+        person, (score, label) = top[0]
+        links.append((score, key, person, label, ss[0].iso3))
+
+    # One Wikidata person per country: if two differently named REIGN leaders
+    # found the same person, only the better name match keeps the link. (The
+    # same REIGN name twice is one person REIGN split over inconsistent ages.)
+    taken: dict[tuple[str, str], str] = {}
+    for score, key, person, label, iso in sorted(links, key=lambda x: -x[0]):
+        leader = leaders[key]
+        reign_name = key.split(":")[2]
+        clash = taken.get((iso, person), reign_name) != reign_name and score < 0.8
+        if clash or (iso, person) in reign_qids:
+            unlinked.append(leader.name)
+            continue
+        taken[(iso, person)] = reign_name
+        wb, wprec = pick_birth(births.get(person, []), leader.birth)
+        if wb is not None and leader.birth is not None and abs(wb - leader.birth) > 3:
+            corrected.append(f"{label} {leader.birth:.0f}->{wb:.0f}")
+            leader.birth, leader.birth_precision = wb, wprec
+        elif wb is not None and wprec == "day" and leader.birth_precision != "day":
+            leader.birth, leader.birth_precision = wb, wprec
+        leader.qid = person
+        leader.name = label
+        leader.sources.add("Wikidata")
+    out = []
+    if corrected:
+        out.append(f"birth year taken from Wikidata for {len(corrected)} leaders: {', '.join(sorted(corrected))}")
+    if unlinked:
+        out.append(f"{len(unlinked)} REIGN leaders not linked to Wikidata, e.g. {', '.join(sorted(unlinked)[:10])}")
+    return out
+
+
 def apply_overrides(spells: list[Spell], overrides: list[Spell]) -> list[Spell]:
     """Curated spells replace whatever the datasets say for that country and window."""
     out = spells
@@ -742,8 +993,12 @@ def merge_spells(spells: list[Spell]) -> list[Spell]:
 
 
 def overlap_days(s: Spell, year: int) -> int:
+    """Days of `year` in office. Whoever is in office today counts as staying
+    to 31 December, so the current year's leader does not depend on the date
+    of the build (as mean ages for future dates are projections too)."""
+    end = dt.date(LAST_YEAR, 12, 31) if s.end >= TODAY else s.end
     a = max(s.start, dt.date(year, 1, 1))
-    b = min(s.end, dt.date(year, 12, 31))
+    b = min(end, dt.date(year, 12, 31))
     return (b - a).days + 1 if b >= a else 0
 
 
@@ -757,6 +1012,25 @@ def curation_notes() -> list[dict]:
                 k = "untracked" if kind == "office" and r.office == "none" else kind
                 notes.append({"iso3": r.iso3, "kind": k, "note": r.note})
     return notes
+
+
+def write_csv(ds: dict) -> None:
+    """The same country-years as gap.json, one row each, for download."""
+    leaders = ds["leaders"]
+    names = {c["iso3"]: c["name"] for c in ds["countries"]}
+    with OUT_CSV.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["iso3", "country", "year", "leader", "leader_wikidata", "leader_born", "leader_born_precision",
+                    "leader_age", "population_mean_age", "gap", "mean_age_projected", "population",
+                    "other_leaders", "note"])
+        for iso, rows in sorted(ds["series"].items(), key=lambda kv: names[kv[0]]):
+            for r in rows:
+                l = leaders[r["l"]]
+                w.writerow([iso, names[iso], r["y"], l["name"], l.get("qid", ""), l["born"] or "",
+                            "collective" if l.get("collective") else l["bornPrecision"],
+                            r["la"] if r["la"] is not None else "", r["ma"], r["gap"] if r["gap"] is not None else "",
+                            int(bool(r.get("proj"))), r.get("pop", ""),
+                            "; ".join(leaders[i]["name"] for i in r.get("others", [])), r.get("via", "")])
 
 
 def main() -> None:
@@ -779,8 +1053,20 @@ def main() -> None:
 
     print("Leaders: Wikidata (after Aug 2021)")
     wd_spells, overrides, warnings, chosen = build_wikidata(reign_spells, reign_gov, leaders, args.refresh)
-    for w in warnings:
-        print("  WARN", w)
+
+    print("Leaders: linking REIGN leaders to Wikidata")
+    warnings += link_reign_leaders(reign_spells, leaders, args.refresh)
+    # One leader per Wikidata person: REIGN files some people under two codes
+    # (Kohl for West Germany and Germany) or splits them over spellings.
+    canon: dict[str, str] = {}
+    for k in sorted(leaders, key=lambda k: (leaders[k].birth_precision != "day", k)):
+        if leaders[k].qid:
+            canon.setdefault(leaders[k].qid, k)
+    for s in reign_spells + wd_spells + overrides:
+        q = leaders[s.leader].qid
+        if q and canon[q] != s.leader:
+            leaders[canon[q]].sources |= leaders[s.leader].sources
+            s.leader = canon[q]
 
     spells = merge_spells(apply_overrides(reign_spells + wd_spells, overrides))
     by_iso: dict[str, list[Spell]] = {}
@@ -844,6 +1130,7 @@ def main() -> None:
          **({"officeAfter2021": office_labels.get(chosen[iso], chosen[iso])} if iso in chosen else {})}
         for iso in sorted(series, key=lambda i: names.get(i, i))
     ]
+    name_leaders([leaders[k] for k in used], args.refresh)
     leader_list = []
     for k in used:
         l = leaders[k]
@@ -853,6 +1140,8 @@ def main() -> None:
             item["qid"] = l.qid
         if l.wiki_title:
             item["wiki"] = l.wiki_title
+        if l.collective:
+            item["collective"] = True
         leader_list.append(item)
 
     spell_out = {
@@ -885,10 +1174,15 @@ def main() -> None:
         "warnings": warnings,
         "curation": curation_notes(),
     }
+    baseline = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else None
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    write_csv(out)
     n_rows = sum(len(v) for v in series.values())
-    print(f"Wrote {OUT.relative_to(HERE.parent)}: {len(countries)} countries, {len(leader_list)} leaders, {n_rows} country-years")
+    print(f"Wrote {OUT.relative_to(HERE.parent)} and gap.csv: {len(countries)} countries, {len(leader_list)} leaders, "
+          f"{n_rows} country-years")
+    if not validate.report(*validate.check(out, baseline)):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

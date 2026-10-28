@@ -6,6 +6,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content="How much older (or younger) is each country's leader than its population? Every country, every year since 1960." />
     <title>The leader–population age gap</title>
+    <!-- Social preview. Absolute URLs: update them if the site moves to a custom domain. -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="How much older are leaders than the people they lead?" />
+    <meta property="og:description" content="Every country, every year since 1960: the effective leader's age minus the population's mean age." />
+    <meta property="og:url" content="https://raulprop.github.io/global-leader-population-gap/" />
+    <meta property="og:image" content="https://raulprop.github.io/global-leader-population-gap/og.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="World map coloured by how much older each country's leader is than its average resident" />
+    <meta name="twitter:card" content="summary_large_image" />
   </head>
   <body>
     <div class="page">
@@ -122,7 +132,8 @@
                 </p>
                 <p>
                   When several leaders held office in a year, the one who held it <strong>for the most days</strong> is
-                  used; the others are listed in the country panel.
+                  used; the others are listed in the country panel. For the current year, whoever is in office today
+                  is counted as staying until 31 December.
                 </p>
               </section>
               <section>
@@ -134,10 +145,15 @@
                 </p>
               </section>
               <section>
-                <h3>Birth dates</h3>
+                <h3>Names and birth dates</h3>
                 <p>
-                  From Archigos where available, otherwise Wikidata. For the remaining leaders, the birth date is
-                  inferred from REIGN's monthly age readings (shown as “c. 1950”).
+                  Leaders are matched to <a href="https://www.wikidata.org/">Wikidata</a> by country, dates in office
+                  and name, and take their English Wikipedia name and Wikidata birth date. Otherwise the birth date
+                  comes from Archigos or is inferred from REIGN's monthly age readings (shown as “c. 1950”).
+                </p>
+                <p>
+                  Juntas and joint offices that REIGN codes as one leader (e.g. San Marino's two Captains Regent)
+                  have no single age, so no gap.
                 </p>
               </section>
               <section>
@@ -158,10 +174,16 @@
                 <ul>
                   <li>"Effective leader" is a judgement call in collective or contested systems.</li>
                   <li>San Marino and Bosnia and Herzegovina have collective heads of state; they are not tracked after 2021.</li>
-                  <li>Taiwan is not covered by REIGN and is missing.</li>
+                  <li>Taiwan and Palestine are not covered by REIGN, so they have no data.</li>
                 </ul>
               </section>
             </div>
+            <p class="note">
+              <a href="data/gap.csv" download>Download the data (CSV)</a> ·
+              <a href="https://github.com/RaulPROP/global-leader-population-gap">Source code</a>.
+              Data under <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>: credit this site
+              and the UN, REIGN, Archigos and Wikidata. Code under the MIT license.
+            </p>
             <p class="note" id="generated"></p>
           </article>
         </div>
