@@ -1,0 +1,172 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="How much older (or younger) is each country's leader than its population? Every country, every year since 1960." />
+    <title>The leader–population age gap</title>
+  </head>
+  <body>
+    <div class="page">
+      <header class="masthead">
+        <h1>How much older are leaders than the people they lead?</h1>
+        <p class="dek">
+          For every country and every year since 1960: the age of the country's effective leader minus the mean (average) age
+          of its population. A gap of +30 means the leader is 30 years older than the average resident.
+        </p>
+      </header>
+
+      <div class="controls" role="group" aria-label="Filters">
+        <div class="control year-control">
+          <span class="control-label" id="year-label">Year</span>
+          <button class="play-button" id="play" type="button" aria-label="Play through the years">▶</button>
+          <input type="range" id="year" aria-labelledby="year-label" />
+          <output class="year-output" id="year-output" for="year"></output>
+        </div>
+        <div class="control country-control">
+          <label class="control-label" for="country-search">Country</label>
+          <input type="search" id="country-search" list="country-options" placeholder="Search a country…" autocomplete="off" />
+          <datalist id="country-options"></datalist>
+        </div>
+      </div>
+
+      <main id="app">
+        <div class="loading" id="loading">Loading data…</div>
+        <div id="content" hidden>
+          <section class="tiles" id="tiles" aria-label="Summary for the selected year"></section>
+
+          <section class="grid">
+            <article class="card">
+              <div class="card-head">
+                <div>
+                  <h2 id="map-title">Leader age minus population mean age</h2>
+                  <p class="sub">Click a country to see its history.</p>
+                </div>
+              </div>
+              <div class="map" id="map"></div>
+              <div class="scale-legend" id="map-legend"></div>
+            </article>
+
+            <article class="card" id="country-card" aria-live="polite">
+              <div class="card-head">
+                <div>
+                  <h2 id="country-title"></h2>
+                  <p class="sub" id="country-sub"></p>
+                </div>
+              </div>
+              <div id="country-headline"></div>
+              <div class="legend" id="country-legend"></div>
+              <div class="chart" id="country-chart"></div>
+              <div id="country-notes"></div>
+              <div class="leaders-list" id="country-leaders"></div>
+            </article>
+          </section>
+
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h2 id="trend-title">The world over time</h2>
+                <p class="sub" id="trend-sub"></p>
+              </div>
+              <div class="segmented" role="group" aria-label="Trend measure">
+                <button type="button" data-mode="gap" aria-pressed="true">Gap</button>
+                <button type="button" data-mode="ages" aria-pressed="false">Ages</button>
+              </div>
+            </div>
+            <div class="legend" id="trend-legend"></div>
+            <div class="chart" id="trend-chart"></div>
+            <p class="note" id="trend-note"></p>
+          </article>
+
+          <article class="card">
+            <div class="card-head">
+              <div>
+                <h2 id="table-title">All countries</h2>
+                <p class="sub" id="table-count"></p>
+              </div>
+              <div class="table-filters" id="table-filters"></div>
+            </div>
+            <div class="table-scroll" id="table"></div>
+            <p class="note">* Mean age based on the UN's medium-variant projection (estimates end in <span id="last-est"></span>).</p>
+          </article>
+
+          <article class="card about">
+            <h2>About the data</h2>
+            <div class="columns">
+              <section>
+                <h3>What is compared</h3>
+                <p>
+                  For each country and year, the <strong>leader's age on 1 July</strong> is compared with the
+                  <strong>mean (average) age of the population</strong> at the same date. The gap is
+                  <em>leader age − mean age</em>.
+                </p>
+              </section>
+              <section>
+                <h3>Population</h3>
+                <p>
+                  Mean age is computed from the UN <em>World Population Prospects 2024</em> population by single year of
+                  age: each one-year age group counts at its midpoint (e.g. 34.5), and the open-ended 100+ group at 102.
+                  Estimates run to <span class="last-est"></span>; later years use the UN medium-variant projection
+                  (dashed lines). Population totals (for the population-weighted average) come from the same source.
+                </p>
+              </section>
+              <section>
+                <h3>Who counts as "the leader"</h3>
+                <p>
+                  The <strong>effective leader</strong>, i.e. the person who actually holds power, as coded by the
+                  <a href="https://oefdatascience.github.io/REIGN.github.io/">REIGN</a> dataset (monthly, 1950 – Aug
+                  2021), which follows the <a href="https://www.rochester.edu/college/faculty/hgoemans/data.htm">Archigos</a>
+                  definition. So: the US president, the UK prime minister, the Chinese party chief, a junta leader after a
+                  coup.
+                </p>
+                <p>
+                  When several leaders held office in a year, the one who held it <strong>for the most days</strong> is
+                  used; the others are listed in the country panel.
+                </p>
+              </section>
+              <section>
+                <h3>After August 2021</h3>
+                <p>
+                  REIGN stops in August 2021. After that, each country's series continues with
+                  <a href="https://www.wikidata.org/">Wikidata</a>'s holders of the same office REIGN was tracking (head
+                  of state or head of government), with a few hand-curated exceptions listed below.
+                </p>
+              </section>
+              <section>
+                <h3>Birth dates</h3>
+                <p>
+                  From Archigos where available, otherwise Wikidata. For the remaining leaders, the birth date is
+                  inferred from REIGN's monthly age readings (shown as “c. 1950”).
+                </p>
+              </section>
+              <section>
+                <h3>Historical states</h3>
+                <p>
+                  Data is shown on today's borders. Before independence, former Soviet, Yugoslav and Czechoslovak
+                  republics show the leader of the union they belonged to. Germany before 1990 shows West Germany's
+                  leader, Yemen before 1990 North Yemen's, and Vietnam before 1976 North Vietnam's, each compared with
+                  the population of today's whole country. Colonies before independence have no leader.
+                </p>
+              </section>
+              <section>
+                <h3>Hand-curated decisions</h3>
+                <ul id="curation-list"></ul>
+              </section>
+              <section>
+                <h3>Caveats</h3>
+                <ul>
+                  <li>"Effective leader" is a judgement call in collective or contested systems.</li>
+                  <li>San Marino and Bosnia and Herzegovina have collective heads of state; they are not tracked after 2021.</li>
+                  <li>Taiwan is not covered by REIGN and is missing.</li>
+                </ul>
+              </section>
+            </div>
+            <p class="note" id="generated"></p>
+          </article>
+        </div>
+      </main>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

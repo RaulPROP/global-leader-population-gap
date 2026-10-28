@@ -2,4 +2,57 @@
 
 # global-leader-population-gap
 
-Created in [T3 Code](https://t3.codes).
+How much older (or younger) is a country's leader than its population?
+For every country and every year since 1960, this compares the age of the
+country's **effective leader** with the **mean (average) age of its population**, and
+shows the result in an interactive website (world map, per-country history,
+global trend, sortable table).
+
+## Run the website
+
+```sh
+cd web
+npm install
+npm run dev        # http://localhost:5173
+```
+
+`npm run build` produces a static site in `web/dist/` that can be hosted anywhere.
+The data it reads is `web/public/data/gap.json`, which is checked in.
+
+## Rebuild the data
+
+```sh
+cd pipeline
+uv run build.py            # uses cached downloads in pipeline/raw/
+uv run build.py --refresh  # re-download everything (Wikidata included)
+```
+
+The Wikidata query service sometimes throttles to one request per minute; the
+pipeline waits and retries, so a refresh can take a few minutes.
+
+## Method
+
+| | Source |
+|---|---|
+| Population mean age (and population, for weighting) | Computed from UN World Population Prospects 2024 population by single year of age (each age counted at its midpoint, 100+ at 102). Estimates to 2023, medium-variant projection after. |
+| Effective leader, 1950 – Aug 2021 | [REIGN](https://oefdatascience.github.io/REIGN.github.io/) (monthly), which follows the [Archigos](https://www.rochester.edu/college/faculty/hgoemans/data.htm) definition of effective leader |
+| Effective leader, Sep 2021 – today | Wikidata holders of the same office REIGN was tracking for that country (head of state `P35` or head of government `P6`, chosen automatically by matching REIGN's last leader) |
+| Birth dates | Archigos, else Wikidata, else inferred from REIGN's monthly ages |
+
+* Ages are measured on 1 July (the UN's reference date). Gap = leader age − mean age.
+* The leader of a year is whoever held office for the most days that year.
+* Today's borders: former Soviet / Yugoslav / Czechoslovak republics show the
+  union's leader before independence; Germany before 1990 shows West Germany,
+  Yemen before 1990 North Yemen, Vietnam before 1976 North Vietnam.
+
+### Hand-curated decisions (`pipeline/config/`)
+
+* `countries.csv` – Correlates of War code → ISO3 mapping, incl. historical states.
+* `offices.csv` – countries where the office to follow after 2021 is set by hand
+  (e.g. Vietnam's party General Secretary, Swiss President, Thai PM).
+* `manual_leaders.csv` – leader spells that override everything else for their
+  window (e.g. Iran's Supreme Leader instead of the president, Myanmar's junta chief).
+* `exclude.csv` – Wikidata office holders who never held effective power (e.g. Guaidó).
+* `names.csv` – fixes for bad Wikidata labels.
+
+All of these are listed on the website's "About the data" section.
