@@ -107,7 +107,7 @@ def check(ds: dict, baseline: dict | None = None) -> tuple[list[str], list[str]]
             elif lost := sorted(old - new):
                 errors.append(f"{iso}: lost years {lost}")
 
-    unknown = [l["name"] for l in leaders if l["bornPrecision"] == "unknown"]
+    unknown = [l["name"] for l in leaders if l["bornPrecision"] == "unknown" and not l.get("collective")]
     if unknown:
         warnings.append(f"no birth date for {len(unknown)} leaders: {', '.join(unknown)}")
     surnames = [l["name"] for l in leaders if len(l["name"].split()) == 1]

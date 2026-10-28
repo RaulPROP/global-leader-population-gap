@@ -43,7 +43,7 @@ Run it on its own with `uv run validate.py`. Terms are defined in
 | Population mean age (and population, for weighting) | Computed from UN World Population Prospects 2024 population by single year of age (each age counted at its midpoint, 100+ at 102). Estimates to 2023, medium-variant projection after. |
 | Effective leader, 1950 – Aug 2021 | [REIGN](https://oefdatascience.github.io/REIGN.github.io/) (monthly), which follows the [Archigos](https://www.rochester.edu/college/faculty/hgoemans/data.htm) definition of effective leader |
 | Effective leader, Sep 2021 – today | Wikidata holders of the same office REIGN was tracking for that country (head of state `P35` or head of government `P6`, chosen automatically by matching REIGN's last leader) |
-| Birth dates | Archigos, else Wikidata, else inferred from REIGN's monthly ages |
+| Names and birth dates | Wikidata (English Wikipedia title as the name) for leaders matched by country, office dates and name; else Archigos; else inferred from REIGN's monthly ages |
 
 * Ages are measured on 1 July (the UN's reference date). Gap = leader age − mean age.
 * The leader of a year is whoever held office for the most days that year.
@@ -59,6 +59,10 @@ Run it on its own with `uv run validate.py`. Terms are defined in
 * `manual_leaders.csv` – leader spells that override everything else for their
   window (e.g. Iran's Supreme Leader instead of the president, Myanmar's junta chief).
 * `exclude.csv` – Wikidata office holders who never held effective power (e.g. Guaidó).
-* `names.csv` – fixes for bad Wikidata labels.
+* `names.csv` – display names, keyed by Wikidata QID or REIGN leader key
+  (`reign:<COW code>:<REIGN name>`), for vandalised labels and surname-only REIGN names.
+* `links.csv` – REIGN leaders linked to a Wikidata person by hand (or, with an
+  empty `qid`, kept from being linked) when the automatic match fails or is wrong.
 
-All of these are listed on the website's "About the data" section.
+The decisions about who led (`offices.csv`, `manual_leaders.csv`, `exclude.csv`)
+are listed on the website's "About the data" section.

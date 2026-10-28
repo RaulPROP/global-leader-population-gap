@@ -238,6 +238,8 @@ function renderCountry(model: Model, state: State, chart: LineChart, selectYear:
         ` (${fmtAge(row.la)}) was ${fmtAge(Math.abs(row.gap))} years ${older ? "older" : "younger"} than the average resident (${fmtAge(row.ma)}${row.proj ? ", projected" : ""}).`,
       ),
     );
+  } else if (row?.leader.collective) {
+    head.replaceChildren(el("p", { class: "country-headline" }, `${row.leader.name}: a collective leadership, so no single leader age for ${state.year}.`));
   } else if (row) {
     head.replaceChildren(el("p", { class: "country-headline" }, `${row.leader.name}: birth date unknown, so no gap for ${state.year}.`));
   } else {

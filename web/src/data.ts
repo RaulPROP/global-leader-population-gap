@@ -27,6 +27,8 @@ export interface Leader {
   sources: string[];
   qid?: string;
   wiki?: string;
+  /** a junta or joint office coded as one leader, so it has no age */
+  collective?: true;
 }
 
 export interface Country {
