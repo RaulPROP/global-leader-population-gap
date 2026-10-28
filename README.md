@@ -21,6 +21,14 @@ After rebuilding the data, `npm run og` re-renders the social preview image
 (`web/public/og.png`) with headless Chrome; set `CHROME` to its path if it is not `chromium`.
 The data it reads is `web/public/data/gap.json`, which is checked in.
 
+## Deploy
+
+`.github/workflows/deploy.yml` runs `pipeline/validate.py` and builds the site on
+every push and pull request, and publishes `web/dist` to GitHub Pages from
+`main`. One-time setup: make the repository public (Pages needs that on a free
+plan) and set **Settings → Pages → Source** to **GitHub Actions**. The site is
+then at https://raulprop.github.io/global-leader-population-gap/.
+
 ## Rebuild the data
 
 ```sh

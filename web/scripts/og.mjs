@@ -16,7 +16,8 @@ const chrome = process.env.CHROME ?? "chromium";
 // A static build of just the card, served from this process (so Chrome must
 // run asynchronously, or the server could not answer it).
 const outDir = mkdtempSync(join(tmpdir(), "og-"));
-await build({ root, logLevel: "error", build: { outDir, rollupOptions: { input: join(root, "og/card.html") } } });
+// base "/": the card sits in og/, so the site's relative base would miss data/.
+await build({ root, base: "/", logLevel: "error", build: { outDir, rollupOptions: { input: join(root, "og/card.html") } } });
 const server = await preview({ root, logLevel: "error", build: { outDir }, preview: { port: 5199, strictPort: true } });
 try {
   await promisify(execFile)(chrome, [
