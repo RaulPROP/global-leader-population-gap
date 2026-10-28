@@ -36,6 +36,12 @@ leaderless period after Aug 2021, overlapping leaders, lost country-years).
 Run it on its own with `uv run validate.py`. Terms are defined in
 [GLOSSARY.md](GLOSSARY.md).
 
+## Data and license
+
+`web/public/data/gap.csv` has one row per country and year (leader, birth date,
+ages, gap, population). The data is CC BY 4.0 with credit to its sources (see
+[DATA-LICENSE.md](DATA-LICENSE.md)); the code is MIT ([LICENSE](LICENSE)).
+
 ## Method
 
 | | Source |

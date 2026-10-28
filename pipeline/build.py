@@ -3,7 +3,7 @@
     uv run build.py            # use cached raw inputs where present
     uv run build.py --refresh  # re-download everything (incl. Wikidata)
 
-Output: ../web/public/data/gap.json, then checked by validate.py (exit 1 on errors).
+Output: ../web/public/data/gap.json (+ gap.csv for download), then checked by validate.py (exit 1 on errors).
 
 Method, in short:
   * Population mean age: computed from UN WPP 2024 population by single year
@@ -23,6 +23,7 @@ Method, in short:
 from __future__ import annotations
 
 import argparse
+import csv
 import datetime as dt
 import difflib
 import json
@@ -40,6 +41,7 @@ import validate
 HERE = Path(__file__).parent
 CONFIG = HERE / "config"
 OUT = HERE.parent / "web" / "public" / "data" / "gap.json"
+OUT_CSV = OUT.with_suffix(".csv")
 
 FIRST_YEAR = 1960
 TODAY = dt.date.today()
@@ -1007,6 +1009,25 @@ def curation_notes() -> list[dict]:
     return notes
 
 
+def write_csv(ds: dict) -> None:
+    """The same country-years as gap.json, one row each, for download."""
+    leaders = ds["leaders"]
+    names = {c["iso3"]: c["name"] for c in ds["countries"]}
+    with OUT_CSV.open("w", newline="", encoding="utf-8") as f:
+        w = csv.writer(f)
+        w.writerow(["iso3", "country", "year", "leader", "leader_wikidata", "leader_born", "leader_born_precision",
+                    "leader_age", "population_mean_age", "gap", "mean_age_projected", "population",
+                    "other_leaders", "note"])
+        for iso, rows in sorted(ds["series"].items(), key=lambda kv: names[kv[0]]):
+            for r in rows:
+                l = leaders[r["l"]]
+                w.writerow([iso, names[iso], r["y"], l["name"], l.get("qid", ""), l["born"] or "",
+                            "collective" if l.get("collective") else l["bornPrecision"],
+                            r["la"] if r["la"] is not None else "", r["ma"], r["gap"] if r["gap"] is not None else "",
+                            int(bool(r.get("proj"))), r.get("pop", ""),
+                            "; ".join(leaders[i]["name"] for i in r.get("others", [])), r.get("via", "")])
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--refresh", action="store_true", help="re-download all sources")
@@ -1151,8 +1172,10 @@ def main() -> None:
     baseline = json.loads(OUT.read_text(encoding="utf-8")) if OUT.exists() else None
     OUT.parent.mkdir(parents=True, exist_ok=True)
     OUT.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    write_csv(out)
     n_rows = sum(len(v) for v in series.values())
-    print(f"Wrote {OUT.relative_to(HERE.parent)}: {len(countries)} countries, {len(leader_list)} leaders, {n_rows} country-years")
+    print(f"Wrote {OUT.relative_to(HERE.parent)} and gap.csv: {len(countries)} countries, {len(leader_list)} leaders, "
+          f"{n_rows} country-years")
     if not validate.report(*validate.check(out, baseline)):
         raise SystemExit(1)
 
