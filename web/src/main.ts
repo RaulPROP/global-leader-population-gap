@@ -221,6 +221,7 @@ function renderCountry(model: Model, state: State, chart: LineChart, selectYear:
   const s2 = cssVar("--series-2");
 
   $("country-title").textContent = country.name;
+  document.title = `${country.name} · The leader–population age gap`;
   const office =
     country.officeAfter2021 && country.officeAfter2021 !== "not tracked" ? ` · from Sep 2021 tracks the ${country.officeAfter2021}` : "";
   $("country-sub").textContent = `${country.continent ?? ""}${office}`;

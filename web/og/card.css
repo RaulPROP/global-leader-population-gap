@@ -1,0 +1,41 @@
+body.og {
+  width: 1200px;
+  height: 630px;
+  overflow: hidden;
+  background: var(--page);
+}
+.og-card {
+  height: 100%;
+  padding: 44px 56px 36px;
+  display: flex;
+  flex-direction: column;
+}
+.og-card h1 {
+  margin: 0;
+  font-size: 40px;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+}
+.og-sub {
+  margin: 12px 0 0;
+  font-size: 22px;
+  color: var(--ink-2);
+}
+.og-map {
+  /* The map is 0.47 times as tall as it is wide: 850 × 400. */
+  margin: 18px auto 10px;
+  width: 850px;
+}
+.og-legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  font-size: 18px;
+  color: var(--ink-2);
+}
+.og-bar {
+  width: 280px;
+  height: 12px;
+  border-radius: 6px;
+}

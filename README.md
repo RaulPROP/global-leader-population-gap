@@ -17,6 +17,8 @@ npm run dev        # http://localhost:5173
 ```
 
 `npm run build` produces a static site in `web/dist/` that can be hosted anywhere.
+After rebuilding the data, `npm run og` re-renders the social preview image
+(`web/public/og.png`) with headless Chrome; set `CHROME` to its path if it is not `chromium`.
 The data it reads is `web/public/data/gap.json`, which is checked in.
 
 ## Rebuild the data
